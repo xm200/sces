@@ -1,22 +1,16 @@
 from flask import Flask, request
-import sympy
+from Crypto.Util import number
 import sqlite3
 import os
 import hashlib
 
 app = Flask("Server SCES")
 
-def extended_gcd(e: int, d: int):
-    if e == 0: return d, 0, 1
-    gcd, s, t = extended_gcd(d % e, e)
-    return gcd, t - (d // e) * s, s
-
-
 def gen_rsa_pkey():
-    p, q = 17, 65537 # p, q = os.getenv("P_MODULO_PART"), os.getenv("Q_MODULO_PART")
-    fi = (p - 1) * (q - 1)
-    e = sympy.randprime(128, 256)
-    d = extended_gcd(e, fi)[1]
+    p, q = int(os.getenv("P_MODULO_PART")), int(os.getenv("Q_MODULO_PART"))
+    phi = (p - 1) * (q - 1)
+    e = number.getPrime(256)
+    d = pow(e, -1, phi)
     return e, d
 
 
@@ -24,26 +18,27 @@ def gen_rsa_pkey():
 def check_user():
     # server has private key to verify signature
     # signature is encrypted hash of surname
-    sign = request.args.get('sign') # get public signature
+    pubkey = int(request.args.get('pubkey')) # get public key
     uid = request.args.get("uid") # from which user server need to get private key to check signature
-    if sign is None or uid is None:
+    if pubkey is None or uid is None:
         return "Bad request!", 400
     try:
         con = sqlite3.connect("./db/users.db")
-    except Exception as e:
+    except Exception:
         return "Bad request!", 400
 
     cursor = con.cursor()
     try:
-        privkey = cursor.execute("SELECT privkey FROM users WHERE uid=?", (uid, ))
-    except Exception as e:
+        privkey = int(cursor.execute("SELECT privkey FROM users WHERE uid=?", (uid, )).fetchone()[0])
+    except Exception:
         con.close()
         return "Bad request!", 400
     
-    p, q = os.getenv("P_MODULO_PART"), os.getenv("Q_MODULO_PART")
+    p, q = int(os.getenv("P_MODULO_PART")), int(os.getenv("Q_MODULO_PART"))
+    n = p * q
     con.close()
 
-    if pow(sign, privkey, p * q) == uid:
+    if pow(pow(int(uid, 16), pubkey, n), privkey, n) == int(uid, 16):
         return "Ok", 200
 
     return "Bad request!", 400
@@ -61,8 +56,8 @@ def set_user():
     con = sqlite3.connect("./db/users.db")
     cursor = con.cursor()
 
-    cursor.execute("INSERT INTO users VALUES (?, ?, ?)", (hash, e, d))
-
+    cursor.execute("INSERT INTO users VALUES (?, ?, ?)", (hash, str(e), str(d)))
+    con.commit()
     con.close()
     return str(e), 200
     
@@ -72,6 +67,8 @@ def set_user():
 def main():
     return "It works!"
 
+os.environ['Q_MODULO_PART'] = str(number.getPrime(1024))
+os.environ['P_MODULO_PART'] = str(number.getPrime(1024))
 
 if not os.path.isfile('./db/users.db'):
     os.mkdir("./db")
@@ -83,3 +80,5 @@ if not os.path.isfile('./db/users.db'):
 
 if __name__ == "__main__":
     app.run("localhost", 8888)
+
+# "GET /api/check_user?pubkey=108824157194683190612366456491022126664658596708153474417138779042824141100327&uid=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 HTTP/1.1" 
