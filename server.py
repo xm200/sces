@@ -1,5 +1,6 @@
 from flask import Flask, request
 from Crypto.Util import number
+import uuid
 import sqlite3
 import os
 import hashlib
@@ -60,8 +61,51 @@ def set_user():
     con.commit()
     con.close()
     return str(e), 200
+
+
+@app.route("/api/create_package", methods=["POST"])
+def create_package():
+    global used_packages_uuid
+    parameters = ['weight', 'width', 'height', 'thickness']
+    
+    for param in parameters:
+        if param not in request.args.keys():
+            return "Bad request", 400
+        
+    while (package_uuid := uuid.uuid1()) in used_packages_uuid:
+        continue
+    
+    used_packages_uuid.add(package_uuid)
+
+    con = sqlite3.connect("./db/packages.db")
+    cursor = con.cursor()
+    cursor.execute("INSERT INTO packages VALUES(?, ?, ?, ?, ?)", (package_uuid, float(request.weight), int(request.width), int(request.height), int(request.thickness)))
+    con.commit()
+    con.close()
+
+    return f"Package created, uid: {package_uuid}", 200
     
 
+
+@app.route("/api/remove_package")
+def remove_package():
+    if request.uid is None:
+        return "Bad request"
+    
+    global used_packages_uuid
+
+    con = sqlite3.connect("./db/packages.db")
+    cursor = con.cursor()
+    cursor.execute("DELETE FROM packages WHERE id=?", (request.uid, )).fetchone()
+    con.commit()
+
+    used_packages_uuid.pop(request.uid)
+
+    return "Package deleted", 200
+
+
+
+used_packages_uuid = set()
 
 @app.route("/")
 def main():
@@ -70,15 +114,29 @@ def main():
 os.environ['Q_MODULO_PART'] = str(number.getPrime(1024))
 os.environ['P_MODULO_PART'] = str(number.getPrime(1024))
 
-if not os.path.isfile('./db/users.db'):
+if not os.path.isfile('./db'):
     os.mkdir("./db")
+
+if not os.path.isfile('./db/users.db'):
     open("./db/users.db", "a").close()
     con = sqlite3.connect("./db/users.db")
     cursor = con.cursor()
     cursor.execute("CREATE TABLE users(uid, pubkey, privkey)")
-    con.close()    
+    con.close()
+
+if not os.path.isfile('./db/packages.db'):
+    open('./db/packages.db', 'a').close()
+    con = sqlite3.connect("./db/packages.db")
+    cursor = con.cursor()
+    cursor.execute("CREATE TABLE packages(id, weight, width, height, thinkness)")
+    con.close()
+
+if not os.path.isfile("./db/pairs.db"):
+    open('./db/pairs.db', 'a').close()
+    con = sqlite3.connect("./db/pairs.db")
+    cursor = con.cursor()
+    cursor.execute("CREATE TABLE pairs(hash, pdata)")
+    con.close()
 
 if __name__ == "__main__":
     app.run("localhost", 8888)
-
-# "GET /api/check_user?pubkey=108824157194683190612366456491022126664658596708153474417138779042824141100327&uid=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 HTTP/1.1" 
