@@ -78,6 +78,11 @@ def set_user():
     return str(e), 200
 
 
+@app.route("/api/checkpoint", methods=['POST', 'GET'])
+def checkpoint():
+    pass
+
+
 # Это страница для админов, менеджеров, продавцов
 # Здесь создвются посылки
 @app.route("/api/create_package", methods=["POST"]) 
@@ -92,12 +97,32 @@ def create_package(): # todo: Сделать контроль целостнос
 
     con = sqlite3.connect("./db/packages.db")
     cursor = con.cursor()
-    cursor.execute("INSERT INTO packages (id, weight, width, height, thinkness) VALUES (?, ?, ?, ?, ?)", (str(package_uuid), float(request.args.get('weight')), int(request.args.get('width')), int(request.args.get('height')), int(request.args.get('thickness'))))
+    cursor.execute("INSERT INTO packages (id, weight, width, height, thinkness, approve_path) VALUES (?, ?, ?, ?, ?)", (str(package_uuid), float(request.args.get('weight')), int(request.args.get('width')), int(request.args.get('height')), int(request.args.get('thickness'))))
     con.commit()
     con.close()
 
+    os.mkdir("./packages/" + str(package_uuid))
+
     return f"Package created, uid: {package_uuid}", 200
     
+
+# Страничка для загрузки файлов
+# Доступна для сотрудников
+@app.route("/approve_files")
+def approve_files():
+    pass # todo: approve HTML, подумать на тему сохранения данных и файлов по uuid
+
+
+@app.route("/api/check_package", methods=['GET'])
+def check_package():
+    if 'uid' not in request.args.keys():
+        return "Bad request", 400
+    
+    con = sqlite3.connect("./db/packages.db")
+    cursor = con.cursor()
+    response = cursor.execute("SELECT * FROM packages where uid=?", (request.args.get('uid'), ))
+    con.close()
+    return response
 
 # Страничка служебная, для удаления посылок.
 # Когда посылка доставлена, она удаляется из всех бд.
@@ -153,12 +178,8 @@ if not os.path.isfile("./db/pairs.db"):
     cursor.execute("CREATE TABLE pairs(hash, pdata)")
     con.close()
 
+if not os.path.isdir("./packages"):
+    os.mkdir("./packages")
+
 if __name__ == "__main__":
     app.run("localhost", 8888)
-
-# todo:
-# Аутентификация по сессии для создания пользователей
-# Ограничение по ip для remove_package
-# Разобраться с db
-# Добавить поддержку фото и видео для подтвтерждения конфиденциальности
-# сказать самому себе что умничка
