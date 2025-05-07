@@ -71,7 +71,7 @@ def set_user():
     con = sqlite3.connect("./db/pairs.db")
     cursor = con.cursor()
 
-    cursor.execute("INSERT INTO users VALUES (?, ?, ?)", (hash, data))
+    cursor.execute("INSERT INTO pairs VALUES (?, ?)", (hash, data))
     con.commit()
     con.close()
 
@@ -120,9 +120,9 @@ def check_package():
     
     con = sqlite3.connect("./db/packages.db")
     cursor = con.cursor()
-    response = cursor.execute("SELECT * FROM packages where uid=?", (request.args.get('uid'), ))
+    r = cursor.execute("SELECT * FROM packages WHERE id=?", (request.args.get('uid'), )).fetchall()
     con.close()
-    return response
+    return r
 
 # Страничка служебная, для удаления посылок.
 # Когда посылка доставлена, она удаляется из всех бд.

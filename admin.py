@@ -13,7 +13,7 @@ Main commands:
 
 
 def set_user(pdata: str, addr: str, port: str):
-    r = requests.get(f"http://{addr}:{port}/api/set_user?pdata={pdata}")
+    r = requests.post(f"http://{addr}:{port}/api/set_user?pdata={pdata}")
     hash = hashlib.sha256(pdata.encode()).hexdigest()
 
     con = sqlite3.connect("./db/pairs.db")
@@ -35,14 +35,14 @@ def get_user(pdata: str):
 def get_package(uid: str):
     con = sqlite3.connect("./db/packages.db")
     cursor = con.cursor()
-    package = cursor.execute("SELECT * FROM packages WHERE uid=?", (uid, )).fetchall()
+    package = cursor.execute("SELECT * FROM packages WHERE id=?", (uid, )).fetchall()
     con.close()
     return package
 
 
 def main():
     print(banner)
-    while (cmd := input("> ").split()) != "exit":
+    while (cmd := input("> ").split()[0]) != "exit":
         if cmd[0] == "set":
             print(set_user(cmd[-1], "localhost", "8888"))
         elif cmd[0] == 'get':
