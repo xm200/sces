@@ -1,11 +1,33 @@
 from flask import Flask, request
 from Crypto.Util import number
+from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
+from Crypto.Util.Padding import pad, unpad
+# from flask_sslify import SSLify # Добавить при переносе в Docker
+import binascii
+import pbkdf2
+import base64
+import json
 import uuid
 import sqlite3
 import os
 import hashlib
 
 app = Flask("Server SCES")
+# sslify = SSLify(app) Добавить при переносе в Docker
+# Генерация случайного симметричного ключа шифрования для выдачи API токенов
+# Токен - JSON с правами и некими персональными данными для аутентификации, зашифрованный этим ключом.
+# Токен кодируется в base64 для возможности копирования
+
+SEED = 'EXAMPLE_KEY_SEED' # ИЗМЕНИТЕ ПРИ ЭКСПЛУАТАЦИИ
+SALT = os.urandom(16)
+iv = b"0123456789101112" # ИЗМЕНИТЕ ПРИ ЭКСПЛУАТАЦИИ
+
+key = get_random_bytes(16)
+hexed_key = binascii.hexlify(key)
+
+os.environ['SECRET_KEY'] = binascii.hexlify(key).decode()
+print(hexed_key, len(hexed_key)) # На всякий случай
 
 
 # Это алгоритм генерации пары ключей RSA
@@ -47,6 +69,55 @@ def check_user():
         return "Ok", 200
 
     return "Bad request!", 400
+
+
+@app.route("/register", methods=['GET', 'POST'])
+def register():
+    pass
+
+
+def decrypt_session(session: str):
+    global iv
+    cipher = AES.new(binascii.unhexlify(os.environ['SECRET_KEY']), AES.MODE_CBC, iv)
+    decoded = base64.b64decode(session)
+    decrypted = cipher.decrypt(decoded)
+    return decrypted
+
+
+@app.route("/get_token", methods=['GET'])
+def get_token():
+    if 'username' not in request.args.keys() or 'password' not in request.args.keys():
+        return "Bad request", 400
+    
+    db = ["packages", "users", "all_users", "pairs"]
+    auth = False
+
+    # for i in db:
+    #     con = sqlite3.connect(f"./db/{i}.db")
+    #     cursor = con.cursor()
+    #     session = {}
+    #     data = cursor.execute(f"SELECT * FROM {i} WHERE login=? AND pass=?", (request.args.get('login'), request.args.get('pass'))).fetchall()
+    #     if len(data) > 0:
+    #         session['role'] = data[-1]
+    #         session['name'] = data[0]
+    #         session['pass'] = data[2]
+    #         auth = True
+    #         break
+
+    # if not auth:
+        # return "Not a user!", 403
+    global iv
+    session = {}
+    session['role'] = request.args.get('u')
+    session['name'] = request.args.get('username')
+    session['pass'] = request.args.get('password')
+
+    cipher = AES.new(binascii.unhexlify(os.environ['SECRET_KEY']), AES.MODE_CBC, iv)
+
+    test = cipher.encrypt(bytes(pad(json.dumps(session).encode(), cipher.block_size)))
+    return f"Your session: {base64.b64encode(test)}, decrypted_version: {decrypt_session(base64.b64encode(test))}"
+    
+
 
 
 
@@ -176,6 +247,13 @@ if not os.path.isfile("./db/pairs.db"):
     con = sqlite3.connect("./db/pairs.db")
     cursor = con.cursor()
     cursor.execute("CREATE TABLE pairs(hash, pdata)")
+    con.close()
+
+if not os.path.isfile('./db/all_users.db'):
+    open("./db/all_users.db", "a").close()
+    con = sqlite3.connect("./db/all_users.db")
+    cursor = con.cursor()
+    cursor.execute("CREATE TABLE all_users(name, password)")
     con.close()
 
 if not os.path.isdir("./packages"):
