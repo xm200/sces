@@ -2,10 +2,9 @@ from flask import Flask, request
 from Crypto.Util import number
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
-from Crypto.Util.Padding import pad, unpad
+from Crypto.Util.Padding import pad
 # from flask_sslify import SSLify # Добавить при переносе в Docker
 import binascii
-import pbkdf2
 import base64
 import json
 import uuid
@@ -32,7 +31,8 @@ print(hexed_key, len(hexed_key)) # На всякий случай
 
 # Это алгоритм генерации пары ключей RSA
 def gen_rsa_pkey():
-    p, q = int(os.getenv("P_MODULO_PART")), int(os.getenv("Q_MODULO_PART")) # p, q - простые части модуля, хранятся в переменных окружения
+    p, q = int(os.getenv("P_MODULO_PART")), int(os.getenv("Q_MODULO_PART"))
+    # p, q - простые части модуля, хранятся в переменных окружения
     phi = (p - 1) * (q - 1) # Вычисление функции Эйлера
     e = number.getPrime(256) # Конечно, важно лишь условие об НОД(e, phi) = 1, но, в простых числах жто выполняется
     d = pow(e, -1, phi) # Поиск обратного по модулю числа
@@ -71,17 +71,20 @@ def check_user():
     return "Bad request!", 400
 
 
-@app.route("/register", methods=['GET', 'POST'])
-def register():
-    pass
-
-
 def decrypt_session(session: str):
     global iv
     cipher = AES.new(binascii.unhexlify(os.environ['SECRET_KEY']), AES.MODE_CBC, iv)
     decoded = base64.b64decode(session)
     decrypted = cipher.decrypt(decoded)
-    return decrypted
+    return json.dumps(decrypted)
+
+
+@app.route("/register", methods=['GET', 'POST'])
+def register():
+    if request.args.get('session') is None:
+        return "Bad request!", 400
+    session = decrypt_session(request.args.get('session'))
+
 
 
 @app.route("/get_token", methods=['GET'])
@@ -115,10 +118,7 @@ def get_token():
     cipher = AES.new(binascii.unhexlify(os.environ['SECRET_KEY']), AES.MODE_CBC, iv)
 
     test = cipher.encrypt(bytes(pad(json.dumps(session).encode(), cipher.block_size)))
-    return f"Your session: {base64.b64encode(test)}, decrypted_version: {decrypt_session(base64.b64encode(test))}"
-    
-
-
+    return f"Your session: {base64.b64encode(test)}, decrypted_version: {decrypt_session(base64.b64encode(test).decode())}"
 
 
 # Это страничка для администраторов
@@ -147,67 +147,6 @@ def set_user():
     con.close()
 
     return str(e), 200
-
-
-@app.route("/api/checkpoint", methods=['POST', 'GET'])
-def checkpoint():
-    pass
-
-
-# Это страница для админов, менеджеров, продавцов
-# Здесь создвются посылки
-@app.route("/api/create_package", methods=["POST"]) 
-def create_package(): # todo: Сделать контроль целостности засчёт сохранения фоток и видео
-    parameters = ['weight', 'width', 'height', 'thickness']
-    
-    for param in parameters:
-        if param not in request.args.keys():
-            return "Bad request", 400
-        
-    package_uuid = uuid.uuid1()
-
-    con = sqlite3.connect("./db/packages.db")
-    cursor = con.cursor()
-    cursor.execute("INSERT INTO packages (id, weight, width, height, thinkness, approve_path) VALUES (?, ?, ?, ?, ?)", (str(package_uuid), float(request.args.get('weight')), int(request.args.get('width')), int(request.args.get('height')), int(request.args.get('thickness'))))
-    con.commit()
-    con.close()
-
-    os.mkdir("./packages/" + str(package_uuid))
-
-    return f"Package created, uid: {package_uuid}", 200
-    
-
-# Страничка для загрузки файлов
-# Доступна для сотрудников
-@app.route("/approve_files")
-def approve_files():
-    pass # todo: approve HTML, подумать на тему сохранения данных и файлов по uuid
-
-
-@app.route("/api/check_package", methods=['GET'])
-def check_package():
-    if 'uid' not in request.args.keys():
-        return "Bad request", 400
-    
-    con = sqlite3.connect("./db/packages.db")
-    cursor = con.cursor()
-    r = cursor.execute("SELECT * FROM packages WHERE id=?", (request.args.get('uid'), )).fetchall()
-    con.close()
-    return r
-
-# Страничка служебная, для удаления посылок.
-# Когда посылка доставлена, она удаляется из всех бд.
-@app.route("/api/remove_package")
-def remove_package():
-    if 'uid' not in request.args.keys():
-        return "Bad request", 400
-
-    con = sqlite3.connect("./db/packages.db")
-    cursor = con.cursor()
-    cursor.execute("DELETE FROM packages WHERE id=?", (str(request.args.get('uid')), )).fetchone()
-    con.commit()
-
-    return "Package deleted", 200
 
 
 # Это страничка для админов.
