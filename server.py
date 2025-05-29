@@ -7,7 +7,6 @@ from Crypto.Util.Padding import pad
 import binascii
 import base64
 import json
-import uuid
 import sqlite3
 import os
 import hashlib
@@ -60,10 +59,10 @@ def check_user():
     except Exception:
         con.close()
         return "Bad request!", 400
+    con.close()
     
     p, q = int(os.getenv("P_MODULO_PART")), int(os.getenv("Q_MODULO_PART"))
     n = p * q
-    con.close()
 
     if pow(pow(int(uid, 16), pubkey, n), privkey, n) == int(uid, 16):
         return "Ok", 200
